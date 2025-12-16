@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR 几何漂浮 (V3.0)</title>
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 10; pointer-events: none;
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+            padding-bottom: 50px;
+        }
+        .tip-box {
+            background: rgba(0, 0, 0, 0.6); color: white; padding: 10px 20px;
+            border-radius: 20px; font-size: 14px; margin-bottom: 10px;
+            text-align: center; backdrop-filter: blur(4px);
+        }
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; padding: 15px 40px;
+            border-radius: 50px; font-size: 18px; font-weight: bold;
+            pointer-events: auto; 
+            box-shadow: 0 4px 15px rgba(118, 75, 162, 0.4);
+            display: none; transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+    <div id="overlay">
+        <div class="tip-box" id="status-text">正在寻找花卉图片...</div>
+        <button class="btn" id="action-btn" onclick="spawnShape()">✨ 生成几何体</button>
+    </div>
+
+    <!-- AR 场景 -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 5" 
+             color-space="sRGB" 
+             renderer="colorManagement: true, physicallyCorrectLights" 
+             vr-mode-ui="enabled: false" 
+             device-orientation-permission-ui="enabled: false">
+
+        <!-- 灯光：为了让3D物体有立体感，必须加光 -->
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" position="10 10 10" intensity="0.8"></a-light>
+
+        <!-- 摄像机 -->
+        <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
+
+        <!-- 识别目标容器 -->
+        <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
+            <!-- 识别时的扫描光圈 -->
+            <a-ring color="#764ba2" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
+                <a-animation attribute="opacity" from="0.5" to="0.1" dur="1000" dir="alternate" repeat="indefinite"></a-animation>
+            </a-ring>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        const scene = document.querySelector('a-scene');
+        const statusText = document.getElementById('status-text');
+        const actionBtn = document.getElementById('action-btn');
+        const anchor = document.getElementById('target-anchor');
+
+        // 定义几何体类型库
+        const shapes = [
+            'box',          // 立方体
+            'sphere',       // 球体
+            'cylinder',     // 圆柱
+            'cone',         // 圆锥/四棱锥
+            'torus',        // 甜甜圈
+            'dodecahedron', // 十二面体
+            'tetrahedron'   // 四面体
+        ];
+        
+        // 定义颜色库 (糖果色系)
+        const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4", "#FFEEAD"];
+        
+        let isTargetFound = false;
+
+        anchor.addEventListener("targetFound", event => {
+            statusText.innerText = "已锁定！点击生成悬浮物体";
+            actionBtn.style.display = "block";
+            isTargetFound = true;
+        });
+
+        anchor.addEventListener("targetLost", event => {
+            statusText.innerText = "目标脱离，空间锁定中...";
+        });
+
+        function spawnShape() {
+            // 简单校验：第一次必须对准图
+            if (!isTargetFound && scene.children.length < 5) return alert("请先扫描图片定位！");
+
+            const el = document.createElement('a-entity');
+            
+            // 1. 随机选择形状和颜色
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            // 2. 设置几何体属性 (geometry)
+            el.setAttribute('geometry', {
+                primitive: shape,
+                radius: 0.5, // 用于球体等
+                height: 1,   // 用于圆柱等
+                segmentsRadial: 32 // 让圆形更圆滑
+            });
+
+            // 3. 设置材质 (material)
