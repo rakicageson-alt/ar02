@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 完美脱卡 (V8.0)</title>
+    <title>AR 完美生成 (V9.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
         body { margin: 0; overflow: hidden; }
-        /* 日志框保留，方便最后确认 */
+        /* 日志框 */
         #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; height: 120px;
-            background: rgba(0,0,0,0.6); color: #00ff00; 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100px;
+            background: rgba(0,0,0,0.5); color: #00ff00; 
             font-family: monospace; font-size: 12px; padding: 10px;
             z-index: 9999; pointer-events: none; overflow-y: scroll;
         }
@@ -23,7 +23,7 @@
             padding-bottom: 50px;
         }
         .btn {
-            background: linear-gradient(to right, #11998e, #38ef7d);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white; border: none; padding: 15px 40px;
             border-radius: 50px; font-size: 18px; font-weight: bold;
             pointer-events: auto; 
@@ -34,30 +34,27 @@
 </head>
 <body>
 
-    <div id="debug-console">等待生成指令...<br></div>
+    <div id="debug-console">等待操作...<br></div>
 
     <div id="overlay">
-        <button class="btn" id="action-btn">🌱 在此处生成</button>
+        <button class="btn" id="action-btn">🎲 生成几何体</button>
     </div>
 
-    <!-- 
-        注意：far="100000" 
-        既然系统认为物体在1300米外，我们就把摄像机的视距调大到 10万米，确保不会被裁剪
-    -->
+    <!-- 增加 far 参数，防止远距离裁剪 -->
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 10" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <a-light type="ambient" intensity="0.7"></a-light>
-        <a-light type="directional" position="0 0 1" intensity="1"></a-light>
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" position="0 5 5" intensity="1"></a-light>
         
-        <!-- 摄像机视距设大 -->
-        <a-camera position="0 0 0" look-controls="enabled: true" far="100000"></a-camera>
+        <!-- 关键：把摄像机视距设为无限大 -->
+        <a-camera position="0 0 0" look-controls="enabled: true" far="900000"></a-camera>
 
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <a-ring color="#38ef7d" radius-inner="0.5" radius-outer="0.55" opacity="0.5"></a-ring>
+            <a-ring color="#764ba2" radius-inner="0.5" radius-outer="0.55" opacity="0.5"></a-ring>
         </a-entity>
     </a-scene>
 
@@ -72,7 +69,6 @@
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        // 几何体库
         const shapes = ['box', 'sphere', 'cylinder', 'cone', 'dodecahedron'];
         const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4"];
 
@@ -83,65 +79,72 @@
         });
 
         anchor.addEventListener("targetLost", () => {
-            log("⚠️ 目标丢失 (物体应保留)");
+            log("⚠️ 目标丢失");
         });
 
         actionBtn.addEventListener('click', () => {
             log("🖱️ 开始生成...");
 
-            // 1. 创建物体
-            const el = document.createElement('a-entity');
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
-            const color = colors[Math.floor(Math.random() * colors.length)];
+            try {
+                // ===============================================
+                // 第一步：创建一个“克隆容器” (Wrapper)
+                // 这个容器负责模仿识别图当前的所有状态
+                // ===============================================
+                const wrapper = document.createElement('a-entity');
+                
+                // 强制更新矩阵，获取最新的世界坐标数据
+                anchor.object3D.updateMatrixWorld(true);
 
-            el.setAttribute('geometry', { primitive: shape });
-            el.setAttribute('material', { color: color, opacity: 0.9, transparent: true });
-            
-            // 为了看得见，我们在Z轴稍微抬高一点点 (0.1)
-            // 随机散落 X Y
-            const randX = (Math.random() - 0.5) * 0.5;
-            const randY = (Math.random() - 0.5) * 0.5;
-            el.setAttribute('position', `${randX} ${randY} 0.1`); 
-            
-            // 2. 动画 (自转)
-            el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
-            
-            // 3. 【关键步骤 A】先挂载到 anchor (识别图) 上
-            // 这样能利用 AR 引擎自动处理好那 1300米的比例关系
-            anchor.appendChild(el);
-            log("📦 物体已挂载到图片");
+                const pos = new AFRAME.THREE.Vector3();
+                const rot = new AFRAME.THREE.Quaternion();
+                const scale = new AFRAME.THREE.Vector3();
 
-            // 4. 【关键步骤 B】延迟 100毫秒后，执行“脱卡” (过继给 Scene)
-            // 必须延迟一下，等浏览器先把坐标渲染出来
-            setTimeout(() => {
-                try {
-                    // 获取物体目前在世界中的绝对位置和姿态
-                    const worldPos = new AFRAME.THREE.Vector3();
-                    const worldQuat = new AFRAME.THREE.Quaternion();
-                    const worldScale = new AFRAME.THREE.Vector3();
-                    
-                    el.object3D.getWorldPosition(worldPos);
-                    el.object3D.getWorldQuaternion(worldQuat);
-                    el.object3D.getWorldScale(worldScale);
+                // 提取识别图当前的：位置、旋转、缩放
+                anchor.object3D.matrixWorld.decompose(pos, rot, scale);
 
-                    // 从 anchor 移除
-                    anchor.removeChild(el);
+                log(`📍 锁定坐标 Z: ${pos.z.toFixed(0)}`);
+                log(`📏 锁定缩放: ${scale.x.toFixed(2)}`); // 这里应该会显示很大的数字
 
-                    // 重新设置物体的属性，应用刚才获取的世界绝对值
-                    el.object3D.position.copy(worldPos);
-                    el.object3D.quaternion.copy(worldQuat);
-                    el.object3D.scale.copy(worldScale);
+                // 把这些数据赋给容器
+                wrapper.object3D.position.copy(pos);
+                wrapper.object3D.quaternion.copy(rot);
+                wrapper.object3D.scale.copy(scale); // 【关键】继承缩放，防止物体消失！
 
-                    // 挂载到 scene (世界)
-                    scene.appendChild(el);
-                    
-                    log(`🚀 脱卡完成！绝对坐标 Z: ${worldPos.z.toFixed(0)}`);
-                    log("👀 请看屏幕，物体应该定格在空中了");
+                // 将容器直接挂载到世界场景 (scene)
+                scene.appendChild(wrapper);
 
-                } catch(e) {
-                    log("❌ 脱卡失败: " + e.message);
-                }
-            }, 100);
+
+                // ===============================================
+                // 第二步：在容器里放入几何体 (Shape)
+                // ===============================================
+                const el = document.createElement('a-entity');
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                const color = colors[Math.floor(Math.random() * colors.length)];
+
+                // 设置形状
+                el.setAttribute('geometry', { primitive: shape });
+                el.setAttribute('material', { color: color, opacity: 0.9, transparent: true });
+
+                // 设置随机散落位置 (相对于容器中心)
+                // 这里的数值是相对于识别图尺寸的 (0.5 = 图片的一半宽度)
+                const randX = (Math.random() - 0.5) * 0.8; 
+                const randY = (Math.random() - 0.5) * 1.0; 
+                
+                // Z=0.05 稍微浮起一点点
+                el.setAttribute('position', `${randX} ${randY} 0.05`);
+                
+                // 加上自转动画
+                el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
+                el.setAttribute('animation__pop', 'property: scale; from: 0 0 0; to: 0.5 0.5 0.5; dur: 500; easing: easeOutBack');
+
+                // 把几何体放入容器
+                wrapper.appendChild(el);
+
+                log("🚀 生成完毕！请移动手机查看效果");
+
+            } catch (e) {
+                log(`❌ 错误: ${e.message}`);
+            }
         });
     </script>
 </body>
