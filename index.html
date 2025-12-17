@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 终极调试 (V5.0)</title>
+    <title>AR 空间定格 (V6.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
@@ -11,87 +11,132 @@
         body { margin: 0; overflow: hidden; }
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 999; pointer-events: none; /* 确保层级最高 */
+            z-index: 10; pointer-events: none;
             display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
             padding-bottom: 50px;
         }
-        .btn {
-            background: #FF0000; /* 红色按钮，非常显眼 */
-            color: white; border: none; padding: 20px 50px;
-            border-radius: 50px; font-size: 20px; font-weight: bold;
-            pointer-events: auto; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-            display: none; 
+        .tip-box {
+            background: rgba(0, 0, 0, 0.6); color: white; padding: 10px 20px;
+            border-radius: 20px; font-size: 14px; margin-bottom: 15px;
+            text-align: center; backdrop-filter: blur(4px);
         }
+        .btn {
+            background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+            color: white; border: none; padding: 15px 40px;
+            border-radius: 50px; font-size: 18px; font-weight: bold;
+            pointer-events: auto; 
+            box-shadow: 0 4px 15px rgba(0, 114, 255, 0.4);
+            display: none; transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <button class="btn" id="action-btn">🛑 点击立刻生成</button>
+        <div class="tip-box" id="status-text">正在寻找图片...</div>
+        <button class="btn" id="action-btn">✨ 在此处生成模型</button>
     </div>
 
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;" 
+    <!-- 
+      missTolerance: 10 -> 让识别更宽容，不容易丢失
+    -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 10" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <a-light type="ambient" intensity="1"></a-light>
-        <a-light type="directional" position="0 0 10" intensity="1"></a-light>
+        <a-light type="ambient" intensity="0.6"></a-light>
+        <a-light type="directional" position="5 10 7" intensity="1"></a-light>
+        
+        <!-- 开启 look-controls 以支持脱卡后的旋转追踪 -->
         <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
 
-        <!-- 识别容器 -->
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <!-- 辅助红框，看到它说明识别成功 -->
-            <a-plane color="red" opacity="0.2" width="1" height="1"></a-plane>
+            <!-- 识别光圈 -->
+            <a-ring color="#0072FF" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
+                 <a-animation attribute="opacity" from="0.5" to="0.1" dur="1000" dir="alternate" repeat="indefinite"></a-animation>
+            </a-ring>
         </a-entity>
     </a-scene>
 
     <script>
+        const scene = document.querySelector('a-scene');
+        const statusText = document.getElementById('status-text');
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        // 绑定点击事件（不用 onclick 属性，改用 JS 绑定更稳）
+        // 几何体库
+        const shapes = ['box', 'sphere', 'cylinder', 'dodecahedron'];
+        const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4"];
+
+        // 绑定点击事件
         actionBtn.addEventListener('click', () => {
-            // 【调试弹窗 1】
-            alert("步骤1：接收到点击指令");
-
-            try {
-                // 创建一个简单的红色方块
-                const el = document.createElement('a-box');
-                el.setAttribute('color', 'blue'); // 蓝色方块
-                el.setAttribute('scale', '0.5 0.5 0.5'); // 大小
-                
-                // 设置位置：在图片中心上方 0.5 米
-                // 注意：这里我们用最原始的方法，直接设坐标，不搞数学计算
-                el.setAttribute('position', '0 0 0.5'); 
-
-                // 添加动画让它旋转，证明是活的
-                el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 3000');
-
-                // 【关键改变】直接挂载到 anchor (识别图) 上
-                // 这样只要图还在，物体就一定在图上面
-                anchor.appendChild(el);
-
-                // 【调试弹窗 2】
-                alert("步骤2：模型已加入场景，请看屏幕");
-                
-            } catch (e) {
-                alert("出错啦：" + e.message);
-            }
+            spawnShape();
         });
 
+        // 状态监听
         anchor.addEventListener("targetFound", event => {
-            actionBtn.innerText = "已锁定！点击生成";
+            statusText.innerText = "已锁定！点击按钮生成";
             actionBtn.style.display = "block";
         });
 
         anchor.addEventListener("targetLost", event => {
-            actionBtn.innerText = "目标丢失";
-            // 这里不隐藏按钮，方便调试
+            // 即使丢失目标，按钮也不隐藏，允许盲操作（可选）
+            statusText.innerText = "目标脱离，空间锁定中...";
         });
 
+        function spawnShape() {
+            // 创建实体
+            const el = document.createElement('a-entity');
+            
+            // 随机外观
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            el.setAttribute('geometry', { primitive: shape, radius: 0.25, height: 0.5, width: 0.5, depth: 0.5 });
+            el.setAttribute('material', { color: color, opacity: 0.9, transparent: true, metalness: 0.3 });
+
+            // ==========================================
+            // 核心逻辑：计算“世界坐标”并“脱卡”
+            // ==========================================
+            
+            // 1. 强制更新识别图的坐标矩阵
+            anchor.object3D.updateMatrixWorld(true);
+
+            // 2. 获取识别图在整个 3D 世界中的绝对位置
+            const position = new THREE.Vector3();
+            const quaternion = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+            anchor.object3D.matrixWorld.decompose(position, quaternion, scale);
+
+            // 3. 计算稍微随机一点的偏移 (散落在纸面上)
+            // 偏移量是在“图片坐标系”下的
+            const randomX = (Math.random() - 0.5) * 0.8; 
+            const randomY = (Math.random() - 0.5) * 1.0; 
+            
+            // 创建偏移向量 (z=0 代表贴在纸面上，z=0.1 稍微浮起一点点防止闪烁)
+            const offset = new THREE.Vector3(randomX, randomY, 0.1);
+            
+            // 将偏移向量根据图片的旋转角度进行旋转
+            offset.applyQuaternion(quaternion);
+
+            // 4. 将旋转后的偏移量加到绝对位置上
+            position.add(offset);
+
+            // 5. 将计算好的绝对位置赋值给新物体
+            el.object3D.position.copy(position);
+            el.object3D.quaternion.copy(quaternion); // 让物体朝向和纸面一致
+
+            // 6. 动画效果
+            el.setAttribute('animation__rot', 'property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear');
+            el.setAttribute('animation__pop', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 500; easing: easeOutBack');
+
+            // 7. 【关键】挂载到 scene，而不是 anchor
+            // 这样图片移走后，物体依然留在计算出的世界坐标处
+            scene.appendChild(el);
+        }
     </script>
 </body>
 </html>
