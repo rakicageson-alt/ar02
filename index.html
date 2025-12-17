@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 桌面生成 (V4.1 调试版)</title>
+    <title>AR 终极调试 (V5.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
@@ -11,16 +11,16 @@
         body { margin: 0; overflow: hidden; }
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 10; pointer-events: none;
+            z-index: 999; pointer-events: none; /* 确保层级最高 */
             display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
             padding-bottom: 50px;
         }
         .btn {
-            background: #07c160;
-            color: white; border: none; padding: 15px 40px;
-            border-radius: 50px; font-size: 18px; font-weight: bold;
+            background: #FF0000; /* 红色按钮，非常显眼 */
+            color: white; border: none; padding: 20px 50px;
+            border-radius: 50px; font-size: 20px; font-weight: bold;
             pointer-events: auto; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
             display: none; 
         }
     </style>
@@ -28,7 +28,7 @@
 <body>
 
     <div id="overlay">
-        <button class="btn" id="action-btn" onclick="spawnShape()">🌱 点击生成</button>
+        <button class="btn" id="action-btn">🛑 点击立刻生成</button>
     </div>
 
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001;" 
@@ -37,92 +37,61 @@
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <a-light type="ambient" intensity="0.8"></a-light>
-        <a-light type="directional" position="10 10 10" intensity="1"></a-light>
+        <a-light type="ambient" intensity="1"></a-light>
+        <a-light type="directional" position="0 0 10" intensity="1"></a-light>
         <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
 
+        <!-- 识别容器 -->
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <a-ring color="red" radius-inner="0.5" radius-outer="0.55" opacity="0.5"></a-ring>
+            <!-- 辅助红框，看到它说明识别成功 -->
+            <a-plane color="red" opacity="0.2" width="1" height="1"></a-plane>
         </a-entity>
     </a-scene>
 
     <script>
-        const scene = document.querySelector('a-scene');
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
-        let isTargetFound = false;
+
+        // 绑定点击事件（不用 onclick 属性，改用 JS 绑定更稳）
+        actionBtn.addEventListener('click', () => {
+            // 【调试弹窗 1】
+            alert("步骤1：接收到点击指令");
+
+            try {
+                // 创建一个简单的红色方块
+                const el = document.createElement('a-box');
+                el.setAttribute('color', 'blue'); // 蓝色方块
+                el.setAttribute('scale', '0.5 0.5 0.5'); // 大小
+                
+                // 设置位置：在图片中心上方 0.5 米
+                // 注意：这里我们用最原始的方法，直接设坐标，不搞数学计算
+                el.setAttribute('position', '0 0 0.5'); 
+
+                // 添加动画让它旋转，证明是活的
+                el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 3000');
+
+                // 【关键改变】直接挂载到 anchor (识别图) 上
+                // 这样只要图还在，物体就一定在图上面
+                anchor.appendChild(el);
+
+                // 【调试弹窗 2】
+                alert("步骤2：模型已加入场景，请看屏幕");
+                
+            } catch (e) {
+                alert("出错啦：" + e.message);
+            }
+        });
 
         anchor.addEventListener("targetFound", event => {
             actionBtn.innerText = "已锁定！点击生成";
             actionBtn.style.display = "block";
-            isTargetFound = true;
         });
 
         anchor.addEventListener("targetLost", event => {
-            actionBtn.innerText = "目标丢失 (仍可交互)";
+            actionBtn.innerText = "目标丢失";
+            // 这里不隐藏按钮，方便调试
         });
 
-        function spawnShape() {
-            // 调试步骤 1: 检查是否进入函数
-            console.log("点击触发");
-
-            try {
-                const el = document.createElement('a-entity');
-                
-                // 设置简单的立方体 (红色)，确保显眼
-                el.setAttribute('geometry', {
-                    primitive: 'box',
-                    height: 0.3, width: 0.3, depth: 0.3
-                });
-                el.setAttribute('material', { color: 'red', opacity: 1 });
-
-                // ============================================
-                // 坐标计算 (加了容错)
-                // ============================================
-                
-                // 强制更新矩阵，防止获取到 0
-                anchor.object3D.updateMatrixWorld(true);
-
-                const anchorPos = new THREE.Vector3();
-                const anchorQuat = new THREE.Quaternion();
-                
-                // 获取图片在世界中的位置
-                anchor.object3D.matrixWorld.decompose(anchorPos, anchorQuat, new THREE.Vector3());
-
-                // 调试步骤 2: 看看坐标是不是 (0,0,0)
-                if(anchorPos.length() === 0 && !isTargetFound) {
-                    alert("警告：无法获取图片位置，请确保摄像头正对着图片！");
-                    return;
-                }
-
-                // 缩小随机范围：只在图片中心周围 0.5米 内生成
-                const randomX = (Math.random() - 0.5) * 0.5; 
-                const randomY = (Math.random() - 0.5) * 0.5;
-                const fixedZ = 0.05; // 紧贴表面
-
-                const offsetVector = new THREE.Vector3(randomX, randomY, fixedZ);
-                offsetVector.applyQuaternion(anchorQuat); 
-                const finalPos = new THREE.Vector3().addVectors(anchorPos, offsetVector);
-
-                // 设置位置
-                el.object3D.position.copy(finalPos);
-                el.object3D.quaternion.copy(anchorQuat);
-
-                // 添加动画
-                el.setAttribute('animation', {
-                    property: 'scale', from: '0 0 0', to: '1 1 1', dur: 500, easing: 'easeOutBack'
-                });
-
-                scene.appendChild(el);
-
-                // 调试步骤 3: 成功提示
-                // 如果您能看到这个弹窗，说明代码全对，是视觉问题
-                // alert(`生成成功！坐标: ${finalPos.x.toFixed(2)}, ${finalPos.y.toFixed(2)}, ${finalPos.z.toFixed(2)}`);
-
-            } catch (e) {
-                alert("代码报错了：" + e.message);
-            }
-        }
     </script>
 </body>
 </html>
