@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 几何漂浮 (V3.0)</title>
+    <title>AR 桌面生成 (V4.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
@@ -21,11 +21,11 @@
             text-align: center; backdrop-filter: blur(4px);
         }
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
             color: white; border: none; padding: 15px 40px;
             border-radius: 50px; font-size: 18px; font-weight: bold;
             pointer-events: auto; 
-            box-shadow: 0 4px 15px rgba(118, 75, 162, 0.4);
+            box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4);
             display: none; transition: transform 0.1s;
         }
         .btn:active { transform: scale(0.95); }
@@ -34,28 +34,24 @@
 <body>
 
     <div id="overlay">
-        <div class="tip-box" id="status-text">正在寻找花花图片...</div>
-        <button class="btn" id="action-btn" onclick="spawnShape()">✨ 生成几何体</button>
+        <div class="tip-box" id="status-text">正在寻找hhh图片...</div>
+        <button class="btn" id="action-btn" onclick="spawnShape()">🌱 在平面生成</button>
     </div>
 
-    <!-- AR 场景 -->
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 5" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <!-- 灯光：为了让3D物体有立体感，必须加光 -->
         <a-light type="ambient" intensity="0.6"></a-light>
         <a-light type="directional" position="10 10 10" intensity="0.8"></a-light>
 
-        <!-- 摄像机 -->
         <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
 
-        <!-- 识别目标容器 -->
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
             <!-- 识别时的扫描光圈 -->
-            <a-ring color="#764ba2" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
+            <a-ring color="#38ef7d" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
                 <a-animation attribute="opacity" from="0.5" to="0.1" dur="1000" dir="alternate" repeat="indefinite"></a-animation>
             </a-ring>
         </a-entity>
@@ -67,48 +63,100 @@
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        // 定义几何体类型库
-        const shapes = [
-            'box',          // 立方体
-            'sphere',       // 球体
-            'cylinder',     // 圆柱
-            'cone',         // 圆锥/四棱锥
-            'torus',        // 甜甜圈
-            'dodecahedron', // 十二面体
-            'tetrahedron'   // 四面体
-        ];
-        
-        // 定义颜色库 (糖果色系)
+        const shapes = ['box', 'sphere', 'cylinder', 'cone', 'dodecahedron', 'tetrahedron'];
         const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4", "#FFEEAD"];
         
         let isTargetFound = false;
 
         anchor.addEventListener("targetFound", event => {
-            statusText.innerText = "已锁定！点击生成悬浮物体";
+            statusText.innerText = "已锁定！点击在纸面上生成物体";
             actionBtn.style.display = "block";
             isTargetFound = true;
         });
 
         anchor.addEventListener("targetLost", event => {
-            statusText.innerText = "目标脱离，空间锁定中...";
+            statusText.innerText = "目标脱离，物体将停留在原位...";
         });
 
         function spawnShape() {
-            // 简单校验：第一次必须对准图
+            // 简单校验
             if (!isTargetFound && scene.children.length < 5) return alert("请先扫描图片定位！");
 
             const el = document.createElement('a-entity');
-            
-            // 1. 随机选择形状和颜色
             const shape = shapes[Math.floor(Math.random() * shapes.length)];
             const color = colors[Math.floor(Math.random() * colors.length)];
 
-            // 2. 设置几何体属性 (geometry)
+            // 1. 设置几何体
             el.setAttribute('geometry', {
                 primitive: shape,
-                radius: 0.5, // 用于球体等
-                height: 1,   // 用于圆柱等
-                segmentsRadial: 32 // 让圆形更圆滑
+                // 把物体做小一点，看起来更精致
+                radius: 0.2, 
+                height: 0.4,
+                width: 0.4,
+                depth: 0.4
             });
 
-            // 3. 设置材质 (material)
+            // 2. 设置材质
+            el.setAttribute('material', {
+                color: color,
+                opacity: 0.9,
+                transparent: true,
+                metalness: 0.2,
+                roughness: 0.5
+            });
+
+            // ============================================
+            // 核心修改：计算“贴在平面上”的世界坐标
+            // ============================================
+            
+            // A. 获取识别图当前的世界位置和旋转角度
+            const anchorPos = new THREE.Vector3();
+            const anchorQuat = new THREE.Quaternion();
+            anchor.object3D.updateMatrixWorld();
+            anchor.object3D.matrixWorld.decompose(anchorPos, anchorQuat, new THREE.Vector3());
+
+            // B. 计算相对偏移量 (在图片的本地坐标系中)
+            // X 和 Y 随机 (散落在图片面上)
+            const randomX = (Math.random() - 0.5) * 1.2; 
+            const randomY = (Math.random() - 0.5) * 1.5;
+            
+            // Z 设为 0 (这就是“贴在平面上”的关键)
+            // 如果你想让物体刚好立在纸上，可以设为物体高度的一半 (比如 0.2)
+            const fixedZ = 0.2; 
+
+            // C. 创建一个向量，并应用图片的旋转
+            // 这样即使图片是斜着的，物体也会沿着斜面生成
+            const offsetVector = new THREE.Vector3(randomX, randomY, fixedZ);
+            offsetVector.applyQuaternion(anchorQuat); 
+
+            // D. 最终世界坐标 = 图片中心点 + 旋转后的偏移向量
+            const finalPos = new THREE.Vector3().addVectors(anchorPos, offsetVector);
+
+            el.object3D.position.copy(finalPos);
+            el.object3D.quaternion.copy(anchorQuat); // 让物体的朝向也跟随图片 (可选)
+
+            // ============================================
+
+            // 4. 随机自转动画
+            el.setAttribute('animation__rotate', {
+                property: 'rotation',
+                to: `${Math.random()*360} ${Math.random()*360} 0`,
+                dur: 10000,
+                loop: true,
+                easing: 'linear'
+            });
+
+            // 5. 弹出动画
+            el.setAttribute('animation__scale', {
+                property: 'scale',
+                from: '0 0 0',
+                to: '1 1 1',
+                dur: 600,
+                easing: 'easeOutBack'
+            });
+
+            scene.appendChild(el);
+        }
+    </script>
+</body>
+</html>
