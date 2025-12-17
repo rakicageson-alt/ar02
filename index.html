@@ -3,149 +3,128 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 完美生成 (V9.0)</title>
+    <title>AR 绑定记忆 (V10.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
         body { margin: 0; overflow: hidden; }
-        /* 日志框 */
-        #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100px;
-            background: rgba(0,0,0,0.5); color: #00ff00; 
-            font-family: monospace; font-size: 12px; padding: 10px;
-            z-index: 9999; pointer-events: none; overflow-y: scroll;
-        }
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 10; pointer-events: none;
             display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
             padding-bottom: 50px;
         }
+        .tip-box {
+            background: rgba(0, 0, 0, 0.6); color: white; padding: 10px 20px;
+            border-radius: 20px; font-size: 14px; margin-bottom: 15px;
+            text-align: center; backdrop-filter: blur(4px);
+        }
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ff9966 0%, #ff5e62 100%);
             color: white; border: none; padding: 15px 40px;
             border-radius: 50px; font-size: 18px; font-weight: bold;
             pointer-events: auto; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            display: none; 
+            box-shadow: 0 4px 15px rgba(255, 94, 98, 0.4);
+            display: none; transition: transform 0.1s;
         }
+        .btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
 
-    <div id="debug-console">等待操作...<br></div>
-
     <div id="overlay">
-        <button class="btn" id="action-btn">🎲 生成几何体</button>
+        <div class="tip-box" id="status-text">正在寻找花卉图片...</div>
+        <button class="btn" id="action-btn">🍄 在此处种植模型</button>
     </div>
 
-    <!-- 增加 far 参数，防止远距离裁剪 -->
-    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 10" 
+    <!-- 
+      missTolerance: 5 -> 适度的容差，让追踪更稳
+    -->
+    <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 5" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
         <a-light type="ambient" intensity="0.6"></a-light>
-        <a-light type="directional" position="0 5 5" intensity="1"></a-light>
+        <a-light type="directional" position="0 10 5" intensity="1"></a-light>
         
-        <!-- 关键：把摄像机视距设为无限大 -->
-        <a-camera position="0 0 0" look-controls="enabled: true" far="900000"></a-camera>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
+        <!-- 
+           识别容器 (Anchor)
+           所有生成的模型都将放在这里面
+        -->
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <a-ring color="#764ba2" radius-inner="0.5" radius-outer="0.55" opacity="0.5"></a-ring>
+            <!-- 识别光圈 -->
+            <a-ring color="#ff5e62" radius-inner="0.5" radius-outer="0.55" opacity="0.5">
+                 <a-animation attribute="opacity" from="0.5" to="0.1" dur="1000" dir="alternate" repeat="indefinite"></a-animation>
+            </a-ring>
         </a-entity>
     </a-scene>
 
     <script>
-        function log(msg) {
-            const box = document.getElementById('debug-console');
-            box.innerHTML += `> ${msg}<br>`;
-            box.scrollTop = box.scrollHeight;
-        }
-
         const scene = document.querySelector('a-scene');
+        const statusText = document.getElementById('status-text');
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        const shapes = ['box', 'sphere', 'cylinder', 'cone', 'dodecahedron'];
+        const shapes = ['box', 'sphere', 'cylinder', 'dodecahedron', 'torus'];
         const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4"];
 
-        anchor.addEventListener("targetFound", () => {
-            actionBtn.innerText = "已锁定！点击生成";
-            actionBtn.style.display = "block";
-            log("✅ 识别成功");
-        });
-
-        anchor.addEventListener("targetLost", () => {
-            log("⚠️ 目标丢失");
-        });
-
+        // 绑定点击事件
         actionBtn.addEventListener('click', () => {
-            log("🖱️ 开始生成...");
-
-            try {
-                // ===============================================
-                // 第一步：创建一个“克隆容器” (Wrapper)
-                // 这个容器负责模仿识别图当前的所有状态
-                // ===============================================
-                const wrapper = document.createElement('a-entity');
-                
-                // 强制更新矩阵，获取最新的世界坐标数据
-                anchor.object3D.updateMatrixWorld(true);
-
-                const pos = new AFRAME.THREE.Vector3();
-                const rot = new AFRAME.THREE.Quaternion();
-                const scale = new AFRAME.THREE.Vector3();
-
-                // 提取识别图当前的：位置、旋转、缩放
-                anchor.object3D.matrixWorld.decompose(pos, rot, scale);
-
-                log(`📍 锁定坐标 Z: ${pos.z.toFixed(0)}`);
-                log(`📏 锁定缩放: ${scale.x.toFixed(2)}`); // 这里应该会显示很大的数字
-
-                // 把这些数据赋给容器
-                wrapper.object3D.position.copy(pos);
-                wrapper.object3D.quaternion.copy(rot);
-                wrapper.object3D.scale.copy(scale); // 【关键】继承缩放，防止物体消失！
-
-                // 将容器直接挂载到世界场景 (scene)
-                scene.appendChild(wrapper);
-
-
-                // ===============================================
-                // 第二步：在容器里放入几何体 (Shape)
-                // ===============================================
-                const el = document.createElement('a-entity');
-                const shape = shapes[Math.floor(Math.random() * shapes.length)];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-
-                // 设置形状
-                el.setAttribute('geometry', { primitive: shape });
-                el.setAttribute('material', { color: color, opacity: 0.9, transparent: true });
-
-                // 设置随机散落位置 (相对于容器中心)
-                // 这里的数值是相对于识别图尺寸的 (0.5 = 图片的一半宽度)
-                const randX = (Math.random() - 0.5) * 0.8; 
-                const randY = (Math.random() - 0.5) * 1.0; 
-                
-                // Z=0.05 稍微浮起一点点
-                el.setAttribute('position', `${randX} ${randY} 0.05`);
-                
-                // 加上自转动画
-                el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
-                el.setAttribute('animation__pop', 'property: scale; from: 0 0 0; to: 0.5 0.5 0.5; dur: 500; easing: easeOutBack');
-
-                // 把几何体放入容器
-                wrapper.appendChild(el);
-
-                log("🚀 生成完毕！请移动手机查看效果");
-
-            } catch (e) {
-                log(`❌ 错误: ${e.message}`);
-            }
+            spawnShape();
         });
+
+        // 状态监听
+        anchor.addEventListener("targetFound", event => {
+            statusText.innerText = "已锁定！点击按钮生成";
+            actionBtn.style.display = "block";
+        });
+
+        anchor.addEventListener("targetLost", event => {
+            statusText.innerText = "目标丢失 (模型已自动隐藏)";
+            // 这里我们不隐藏按钮，或者您可以选择隐藏 actionBtn.style.display = "none";
+        });
+
+        function spawnShape() {
+            // 创建实体
+            const el = document.createElement('a-entity');
+            
+            // 随机外观
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            // 设置几何体属性 (半径设小一点，适配图片比例)
+            el.setAttribute('geometry', { primitive: shape, radius: 0.15, height: 0.3, width: 0.3, depth: 0.3 });
+            el.setAttribute('material', { color: color, opacity: 0.9, transparent: true, metalness: 0.2 });
+
+            // ==========================================
+            // 核心逻辑：相对坐标计算
+            // ==========================================
+            
+            // 因为我们要挂载到 anchor 上，所以这里的坐标是“相对于图片中心”的
+            // 0 0 0 = 图片正中心
+            
+            // 随机散落范围：
+            // MindAR中，图片的宽度通常归一化为 1 左右
+            const randomX = (Math.random() - 0.5) * 1.0; // 左右散落
+            const randomY = (Math.random() - 0.5) * 1.2; // 上下散落
+            
+            // Z=0.15 让物体刚好立在纸面上 (物体中心点高出纸面一半高度)
+            el.setAttribute('position', `${randomX} ${randomY} 0.15`);
+            
+            // 动画效果
+            el.setAttribute('animation__rot', 'property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear');
+            el.setAttribute('animation__pop', 'property: scale; from: 0 0 0; to: 1 1 1; dur: 500; easing: easeOutBack');
+
+            // 【关键】直接挂载到 anchor (识别图) 
+            // 只要你是 anchor 的孩子，你就会跟着 anchor 跑，
+            // anchor 消失你也消失，anchor 出现你也出现。
+            anchor.appendChild(el);
+        }
     </script>
 </body>
 </html>
