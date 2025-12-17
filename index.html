@@ -3,22 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR 现场调试 (V7.0)</title>
+    <title>AR 完美脱卡 (V8.0)</title>
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.2/dist/mindar-image-aframe.prod.js"></script>
     
     <style>
         body { margin: 0; overflow: hidden; }
-        
-        /* 1. 调试日志框 (屏幕顶部) */
+        /* 日志框保留，方便最后确认 */
         #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; height: 150px;
-            background: rgba(0,0,0,0.7); color: #00ff00; 
+            position: absolute; top: 0; left: 0; width: 100%; height: 120px;
+            background: rgba(0,0,0,0.6); color: #00ff00; 
             font-family: monospace; font-size: 12px; padding: 10px;
             z-index: 9999; pointer-events: none; overflow-y: scroll;
-            box-sizing: border-box;
         }
-
         #overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 10; pointer-events: none;
@@ -26,7 +23,8 @@
             padding-bottom: 50px;
         }
         .btn {
-            background: #FF0000; color: white; border: none; padding: 15px 40px;
+            background: linear-gradient(to right, #11998e, #38ef7d);
+            color: white; border: none; padding: 15px 40px;
             border-radius: 50px; font-size: 18px; font-weight: bold;
             pointer-events: auto; 
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
@@ -36,87 +34,114 @@
 </head>
 <body>
 
-    <!-- 日志显示区 -->
-    <div id="debug-console">等待操作日志...<br></div>
+    <div id="debug-console">等待生成指令...<br></div>
 
     <div id="overlay">
-        <button class="btn" id="action-btn">🛑 点击生成</button>
+        <button class="btn" id="action-btn">🌱 在此处生成</button>
     </div>
 
+    <!-- 
+        注意：far="100000" 
+        既然系统认为物体在1300米外，我们就把摄像机的视距调大到 10万米，确保不会被裁剪
+    -->
     <a-scene mindar-image="imageTargetSrc: ./targets.mind; filterMinCF:0.0001; filterBeta: 0.001; missTolerance: 10" 
              color-space="sRGB" 
              renderer="colorManagement: true, physicallyCorrectLights" 
              vr-mode-ui="enabled: false" 
              device-orientation-permission-ui="enabled: false">
 
-        <a-light type="ambient" intensity="1"></a-light>
-        <a-light type="directional" position="0 0 10" intensity="1"></a-light>
-        <a-camera position="0 0 0" look-controls="enabled: true"></a-camera>
+        <a-light type="ambient" intensity="0.7"></a-light>
+        <a-light type="directional" position="0 0 1" intensity="1"></a-light>
+        
+        <!-- 摄像机视距设大 -->
+        <a-camera position="0 0 0" look-controls="enabled: true" far="100000"></a-camera>
 
         <a-entity id="target-anchor" mindar-image-target="targetIndex: 0">
-            <a-plane color="red" opacity="0.3" width="1" height="1"></a-plane>
+            <a-ring color="#38ef7d" radius-inner="0.5" radius-outer="0.55" opacity="0.5"></a-ring>
         </a-entity>
     </a-scene>
 
     <script>
-        // 日志工具函数
         function log(msg) {
             const box = document.getElementById('debug-console');
             box.innerHTML += `> ${msg}<br>`;
-            box.scrollTop = box.scrollHeight; // 自动滚动到底部
+            box.scrollTop = box.scrollHeight;
         }
 
         const scene = document.querySelector('a-scene');
         const actionBtn = document.getElementById('action-btn');
         const anchor = document.getElementById('target-anchor');
 
-        // 监听识别状态
-        anchor.addEventListener("targetFound", event => {
+        // 几何体库
+        const shapes = ['box', 'sphere', 'cylinder', 'cone', 'dodecahedron'];
+        const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#96CEB4"];
+
+        anchor.addEventListener("targetFound", () => {
             actionBtn.innerText = "已锁定！点击生成";
             actionBtn.style.display = "block";
-            log("✅ 识别成功 (Target Found)");
+            log("✅ 识别成功");
         });
 
-        anchor.addEventListener("targetLost", event => {
-            log("⚠️ 目标丢失 (Target Lost)");
+        anchor.addEventListener("targetLost", () => {
+            log("⚠️ 目标丢失 (物体应保留)");
         });
 
-        // 绑定点击生成
         actionBtn.addEventListener('click', () => {
-            log("🖱️ 按钮被点击，开始执行逻辑...");
+            log("🖱️ 开始生成...");
 
-            try {
-                // 1. 创建物体
-                const el = document.createElement('a-entity');
-                el.setAttribute('geometry', { primitive: 'box', height: 0.1, width: 0.1, depth: 0.1 }); // 只有 10cm 大小
-                el.setAttribute('material', { color: 'blue', opacity: 1 });
+            // 1. 创建物体
+            const el = document.createElement('a-entity');
+            const shape = shapes[Math.floor(Math.random() * shapes.length)];
+            const color = colors[Math.floor(Math.random() * colors.length)];
 
-                // 2. 计算坐标
-                // 【重要修复】使用 AFRAME.THREE 而不是 THREE
-                anchor.object3D.updateMatrixWorld(true);
-                
-                const position = new AFRAME.THREE.Vector3();
-                const quaternion = new AFRAME.THREE.Quaternion();
-                const scale = new AFRAME.THREE.Vector3();
-                
-                anchor.object3D.matrixWorld.decompose(position, quaternion, scale);
+            el.setAttribute('geometry', { primitive: shape });
+            el.setAttribute('material', { color: color, opacity: 0.9, transparent: true });
+            
+            // 为了看得见，我们在Z轴稍微抬高一点点 (0.1)
+            // 随机散落 X Y
+            const randX = (Math.random() - 0.5) * 0.5;
+            const randY = (Math.random() - 0.5) * 0.5;
+            el.setAttribute('position', `${randX} ${randY} 0.1`); 
+            
+            // 2. 动画 (自转)
+            el.setAttribute('animation', 'property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear');
+            
+            // 3. 【关键步骤 A】先挂载到 anchor (识别图) 上
+            // 这样能利用 AR 引擎自动处理好那 1300米的比例关系
+            anchor.appendChild(el);
+            log("📦 物体已挂载到图片");
 
-                log(`📍 获取到图片坐标: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
+            // 4. 【关键步骤 B】延迟 100毫秒后，执行“脱卡” (过继给 Scene)
+            // 必须延迟一下，等浏览器先把坐标渲染出来
+            setTimeout(() => {
+                try {
+                    // 获取物体目前在世界中的绝对位置和姿态
+                    const worldPos = new AFRAME.THREE.Vector3();
+                    const worldQuat = new AFRAME.THREE.Quaternion();
+                    const worldScale = new AFRAME.THREE.Vector3();
+                    
+                    el.object3D.getWorldPosition(worldPos);
+                    el.object3D.getWorldQuaternion(worldQuat);
+                    el.object3D.getWorldScale(worldScale);
 
-                // 3. 设置物体位置 (简单测试：直接等于图片位置)
-                el.object3D.position.copy(position);
-                el.object3D.quaternion.copy(quaternion);
+                    // 从 anchor 移除
+                    anchor.removeChild(el);
 
-                // 4. 添加到场景
-                scene.appendChild(el);
-                
-                log("🚀 生成完毕！已添加到 Scene");
-                log("👀 请看屏幕红框附近有没有蓝色小方块");
+                    // 重新设置物体的属性，应用刚才获取的世界绝对值
+                    el.object3D.position.copy(worldPos);
+                    el.object3D.quaternion.copy(worldQuat);
+                    el.object3D.scale.copy(worldScale);
 
-            } catch (e) {
-                // 如果出错，这里会显示红字！
-                log(`<span style="color:red">❌ 致命错误: ${e.message}</span>`);
-            }
+                    // 挂载到 scene (世界)
+                    scene.appendChild(el);
+                    
+                    log(`🚀 脱卡完成！绝对坐标 Z: ${worldPos.z.toFixed(0)}`);
+                    log("👀 请看屏幕，物体应该定格在空中了");
+
+                } catch(e) {
+                    log("❌ 脱卡失败: " + e.message);
+                }
+            }, 100);
         });
     </script>
 </body>
